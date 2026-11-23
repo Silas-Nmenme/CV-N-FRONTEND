@@ -112,5 +112,10 @@ export const OrderTokens = {
 
 export async function afterSignIn(user) {
   setUser(user);
-  await Promise.all([Cart.mergeWithServer(), Wish.mergeWithServer()]);
+  // Authentication has already succeeded. Do not block the post-login redirect
+  // if an optional cart or wishlist synchronization request fails.
+  const results = await Promise.allSettled([Cart.mergeWithServer(), Wish.mergeWithServer()]);
+  for (const result of results) {
+    if (result.status === "rejected") emit("sync-error", result.reason);
+  }
 }
