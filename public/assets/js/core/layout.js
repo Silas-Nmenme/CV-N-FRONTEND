@@ -188,7 +188,8 @@ function bindGlobal(cfg) {
     const wish = t.closest("[data-wish]");
     if (wish) {
       const id = wish.dataset.wish;
-      const on = await Wish.toggle(id);
+      let on;
+      try { on = await Wish.toggle(id); } catch (error) { toast(error.message, "err"); return; }
       $$(`[data-wish="${id}"]`).forEach((b) => { b.classList.toggle("on", on); b.setAttribute("aria-pressed", on); b.setAttribute("aria-label", on ? "Remove from wishlist" : "Add to wishlist"); });
       toast(on ? "Saved to wishlist" : "Removed from wishlist");
       return;
@@ -204,6 +205,7 @@ function bindGlobal(cfg) {
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawers(); });
   on("cart", updateBadges);
   on("wish", updateBadges);
+  on("sync-error", (error) => toast(error.message, "err"));
   on("session", () => { updateAccountLinks(); });
 
   const nf = $("#news-form");
@@ -242,7 +244,7 @@ export async function initLayout(active) {
   const path = location.pathname.split("/")[2];
   $$("[data-nav]").forEach((a) => a.classList.toggle("is-active", a.dataset.nav === (active || path)));
   bindSearch(); bindGlobal(cfg); updateBadges();
-  loadSession().then(() => { updateAccountLinks(); if (session.user) { Wish.mergeWithServer(); } });
+  loadSession().then(() => { updateAccountLinks(); if (session.user) { return Wish.mergeWithServer(); } }).catch((e) => toast(e.message, "err"));
   return cfg;
 }
 export const getCategories = () => CATS;

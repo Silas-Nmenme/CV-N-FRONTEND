@@ -18,7 +18,11 @@ export const getConfig = () => (configPromise ||= get("/config").catch((e) => { 
 /* ------------------------------ session ------------------------------ */
 export const session = { user: null, ready: null };
 export function loadSession() {
-  session.ready ||= get("/auth/me").then((r) => (session.user = r.user)).catch(() => (session.user = null)).then(() => { emit("session", session.user); return session.user; });
+  session.ready ||= get("/auth/me").then((r) => (session.user = r.user)).catch((e) => {
+    if (e.status === 401) return (session.user = null);
+    session.ready = null;
+    throw e;
+  }).then(() => { emit("session", session.user); return session.user; });
   return session.ready;
 }
 export function setUser(u) { session.user = u; emit("session", u); }
@@ -30,7 +34,10 @@ let syncTimer;
 const persist = () => {
   safeStorage.set(CART_KEY, cart);
   emit("cart", cart);
-  if (session.user) { clearTimeout(syncTimer); syncTimer = setTimeout(() => put("/account/cart", { items: cart }).catch(() => {}), 600); }
+  if (session.user) {
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(() => put("/account/cart", { items: cart }).catch((error) => emit("sync-error", error)), 600);
+  }
 };
 export const Cart = {
   items: () => cart.map((i) => ({ ...i })),
@@ -51,18 +58,16 @@ export const Cart = {
   replace(items) { cart = items; persist(); },
   /** On sign-in: merge guest cart with the saved cart and push the result to the server. */
   async mergeWithServer() {
-    try {
-      const r = await get("/account/cart");
-      const merged = [...r.items];
-      for (const g of cart) {
-        const m = merged.find((i) => i.productId === g.productId && i.sku === g.sku);
-        if (m) m.quantity = Math.max(m.quantity, g.quantity); else merged.push(g);
-      }
-      cart = merged;
-      safeStorage.set(CART_KEY, cart);
-      emit("cart", cart);
-      await put("/account/cart", { items: cart });
-    } catch { /* offline: keep local cart */ }
+    const r = await get("/account/cart");
+    const merged = [...r.items];
+    for (const g of cart) {
+      const m = merged.find((i) => i.productId === g.productId && i.sku === g.sku);
+      if (m) m.quantity = Math.max(m.quantity, g.quantity); else merged.push(g);
+    }
+    cart = merged;
+    safeStorage.set(CART_KEY, cart);
+    emit("cart", cart);
+    await put("/account/cart", { items: cart });
   },
 };
 
@@ -78,16 +83,22 @@ export const Wish = {
     const adding = !wish.has(id);
     adding ? wish.add(id) : wish.delete(id);
     saveWish();
-    if (session.user) { try { adding ? await post(`/account/wishlist/${id}`) : await del(`/account/wishlist/${id}`); } catch { /* keep optimistic */ } }
+    if (session.user) {
+      try {
+        adding ? await post(`/account/wishlist/${id}`) : await del(`/account/wishlist/${id}`);
+      } catch (error) {
+        adding ? wish.delete(id) : wish.add(id);
+        saveWish();
+        throw error;
+      }
+    }
     return adding;
   },
   async mergeWithServer() {
-    try {
-      const r = await get("/account/wishlist");
-      for (const id of r.ids) wish.add(id);
-      await Promise.all([...wish].filter((id) => !r.ids.includes(id)).map((id) => post(`/account/wishlist/${id}`).catch(() => {})));
-      saveWish();
-    } catch { /* ignore */ }
+    const r = await get("/account/wishlist");
+    for (const id of r.ids) wish.add(id);
+    await Promise.all([...wish].filter((id) => !r.ids.includes(id)).map((id) => post(`/account/wishlist/${id}`)));
+    saveWish();
   },
   reset() { wish = new Set(); saveWish(); },
 };

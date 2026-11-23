@@ -1,14 +1,15 @@
-import { API_BASE_URL } from "./api-config.js";
+import { API_BASE_URL, ASSET_BASE_URL } from "./api-config.js";
 
 export class ApiError extends Error {
   constructor(message, status, fields) { super(message); this.status = status; this.fields = fields || {}; }
 }
 
 const apiOrigin = API_BASE_URL.trim().replace(/\/+$/, "");
+const assetOrigin = ASSET_BASE_URL.trim().replace(/\/+$/, "");
 export const apiUrl = (path) => new URL(path, apiOrigin || window.location.origin).toString();
 export const assetUrl = (path) => {
   if (!path || /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(path)) return path || "";
-  return new URL(path, apiOrigin || window.location.origin).toString();
+  return new URL(path, assetOrigin || apiOrigin || window.location.origin).toString();
 };
 
 export async function api(path, { method = "GET", body, query, signal } = {}) {
