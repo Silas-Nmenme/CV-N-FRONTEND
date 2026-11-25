@@ -10,9 +10,28 @@ import { Cart, Wish, session, loadSession } from "../core/state.js";
 const cfg = await initLayout();
 const app = $("#app");
 const slug = location.pathname.split("/")[2];
+// Staff can open /p/<slug>?preview=1 to check a hidden product before publishing it (the API only honours this for signed-in staff).
+const isPreview = new URLSearchParams(location.search).has("preview");
 
 let product;
-try { product = (await get(`/products/${encodeURIComponent(slug)}`)).product; }
+try {
+  const res = await get(`/products/${encodeURIComponent(slug)}`, isPreview ? { preview: 1 } : undefined);
+  if (!res || !res.product) throw new Error("This product could not be loaded. Please try again.");
+  product = res.product;
+  // Optional fields may be absent from the API response; make sure list/object fields exist so rendering never throws.
+  // No product data is invented here: only empty containers are filled in.
+  const list = (v) => (Array.isArray(v) ? v : []);
+  product.attrDefs = list(product.attrDefs);
+  product.variants = list(product.variants).map((v) => ({ ...v, attrs: v.attrs || {} }));
+  product.images = list(product.images);
+  product.breadcrumb = list(product.breadcrumb);
+  product.highlights = list(product.highlights);
+  product.specGroups = list(product.specGroups);
+  product.distribution = list(product.distribution);
+  product.ratingCount = Number(product.ratingCount) || 0;
+  product.ratingAvg = Number(product.ratingAvg) || 0;
+  if (!product.variants.length) throw new Error("This product has no purchasable options right now. Please check back soon or message us on WhatsApp.");
+}
 catch (e) {
   app.className = "";
   app.innerHTML = html`<div class="wrap empty"><h1>Product not found</h1><p>${e.message}</p><a class="btn btn-primary" href="/shop">Browse the store</a></div>`.toString();
@@ -74,7 +93,7 @@ function buyHtml() {
     <div class="pdp-assure">
       ${product.warranty ? html`<div>${icon("shield")}<span><b>Warranty:</b> ${product.warranty}</span></div>` : ""}
       <div>${icon("truck")}<span>Delivery fee shown before you pay. Check your state under the <a href="#delivery" data-goto="delivery">Delivery tab</a>.</span></div>
-      <div>${icon("lock")}<span>Secure payment with ${cfg.payments.methods.filter((m) => m !== "bank_transfer").map((m) => m === "paystack" ? "Paystack" : "Flutterwave").join(" or ") || "bank transfer"}.</span></div>
+      <div>${icon("lock")}<span>Secure payment with ${(cfg.payments?.methods || []).filter((m) => m !== "bank_transfer").map((m) => m === "paystack" ? "Paystack" : "Flutterwave").join(" or ") || "bank transfer"}.</span></div>
     </div>`;
 }
 
@@ -97,6 +116,9 @@ app.innerHTML = html`<div class="wrap">
   <section class="section" id="related-sec" hidden><div class="section-head"><h2>You may also like</h2></div><div class="grid" id="related"></div></section>
 </div>
 <div class="sticky-buy" id="sticky"></div>`.toString();
+if (product.preview && product.active === false) {
+  app.insertAdjacentHTML("afterbegin", `<div class="wrap"><div class="alert alert-warn" role="status"><strong>Preview only.</strong> This product is hidden, so customers can't see it yet. Tick “Visible in store” in the admin to publish it.</div></div>`);
+}
 
 function stickyHtml() {
   const v = current();
@@ -109,7 +131,7 @@ $("#sticky").innerHTML = stickyHtml().toString();
 const panels = {
   overview: () => html`<div class="prose">${product.highlights.length ? html`<ul class="highlights">${product.highlights.map((h) => html`<li>${icon("check")}<span>${h}</span></li>`)}</ul>` : ""}${(product.description || "").split(/\n{2,}/).filter(Boolean).map((p) => html`<p>${p}</p>`)}${product.network ? html`<p><b>Network / SIM:</b> ${product.network}</p>` : ""}</div>`,
   specs: () => product.specGroups.length ? html`<div style="max-width:820px">${product.specGroups.map((g) => html`<div class="spec-group"><h3>${g.group}</h3><table class="spec-table"><tbody>${g.items.map((i) => html`<tr><th scope="row">${i.label}</th><td>${i.value}</td></tr>`)}</tbody></table></div>`)}</div>` : html`<p class="muted">No specifications have been added yet.</p>`,
-  delivery: () => html`<div style="max-width:620px"><p>Choose your state to see delivery methods and fees for this item.</p><div class="field"><label for="d-state">State</label><select class="select" id="d-state"><option value="">Select your state</option>${cfg.states.map((s) => html`<option>${s}</option>`)}</select></div><div id="d-result"></div></div>`,
+  delivery: () => html`<div style="max-width:620px"><p>Choose your state to see delivery methods and fees for this item.</p><div class="field"><label for="d-state">State</label><select class="select" id="d-state"><option value="">Select your state</option>${(cfg.states || []).map((s) => html`<option>${s}</option>`)}</select></div><div id="d-result"></div></div>`,
 };
 let tab = "overview";
 async function showTab(name) {

@@ -44,7 +44,7 @@ async function editor(view, id) {
   let template = { specFields: [], variantAttrs: [] };
   let variants = p.variants.length ? p.variants.map((v) => ({ ...v })) : [];
 
-  view.innerHTML = html`<div class="a-head"><div><a href="#/products" class="small">← Products</a><h1>${isNew ? "Add product" : "Edit product"}</h1></div>${!isNew ? html`<a class="btn btn-ghost" href="/p/${p.slug}" target="_blank" rel="noopener">View in store ↗</a>` : ""}</div>
+  view.innerHTML = html`<div class="a-head"><div><a href="#/products" class="small">← Products</a><h1>${isNew ? "Add product" : "Edit product"}</h1></div>${!isNew ? html`<a class="btn btn-ghost" href="/p/${p.slug}${p.active ? "" : "?preview=1"}" target="_blank" rel="noopener">${p.active ? "View in store" : "Preview (hidden from customers)"} ↗</a>` : ""}</div>
   <form class="a-form" id="pform" novalidate>
     <div class="card-a"><h2>Basics</h2><div class="form-grid">
       ${field("Product name", "name", p.name, { full: true, ph: "e.g. iPhone 15 Pro Max" })}
