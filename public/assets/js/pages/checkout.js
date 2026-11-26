@@ -15,6 +15,8 @@ const pref = () => storage.get("cvg_checkout", {});
 const savePref = (p) => storage.set("cvg_checkout", { ...pref(), ...p });
 
 if (!Cart.count()) { location.replace("/cart"); await new Promise(() => {}); }
+// Placing an order needs an account. Guests go to sign in and come straight back here; their cart is kept and merged on sign-in.
+if (!session.user) { location.replace(`/login?next=${encodeURIComponent("/checkout")}`); await new Promise(() => {}); }
 
 const P = pref();
 let q = null;
@@ -32,7 +34,6 @@ const PAY_META = { paystack: ["Pay with card, bank or USSD", "Secure payment pow
 app.innerHTML = html`<div class="wrap" style="padding-top:24px"><h1>Checkout</h1>
 ${!cfg.payments.methods.length ? html`<div class="alert alert-error">Online payment is not set up yet. Please contact us on WhatsApp to place your order.</div>` : ""}
 <div class="checkout-layout"><form id="co-form" novalidate>
-  ${u ? "" : html`<div class="alert alert-info">Have an account? <a href="/login?next=/checkout">Sign in</a> for faster checkout. Or continue as a guest.</div>`}
   <div class="panel co-step"><h2><i>1</i> Contact</h2><div class="form-grid">
     <div class="field full"><label for="fullName">Full name</label><input class="input" id="fullName" name="fullName" autocomplete="name" value="${form0.fullName}"></div>
     <div class="field"><label for="email">Email address</label><input class="input" id="email" name="email" type="email" autocomplete="email" value="${form0.email}"><div class="hint">Your receipt and order updates go here.</div></div>
@@ -141,6 +142,8 @@ form.addEventListener("submit", async (e) => {
       Cart.clear();
       location.href = init.url;
     } catch (err) {
+      // The session ended while the shopper was on this page: sign in again, then come back to checkout.
+      if (err.status === 401) { location.href = `/login?next=${encodeURIComponent("/checkout")}`; return; }
       if (err.fields?.issues) { formAlert(form, err.message); refresh(); }
       else if (!showFieldErrors(form, err.fields)) formAlert(form, err.message);
       if (err.status === 409) refresh();
