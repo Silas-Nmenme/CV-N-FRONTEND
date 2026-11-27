@@ -1,7 +1,7 @@
 import { API_BASE_URL, ASSET_BASE_URL } from "./api-config.js";
 
 export class ApiError extends Error {
-  constructor(message, status, fields) { super(message); this.status = status; this.fields = fields || {}; }
+  constructor(message, status, fields, data) { super(message); this.status = status; this.fields = fields || {}; this.data = data || {}; }
 }
 
 const apiOrigin = API_BASE_URL.trim().replace(/\/+$/, "");
@@ -29,7 +29,7 @@ export async function api(path, { method = "GET", body, query, signal } = {}) {
   }
   let data = {};
   try { data = await res.json(); } catch { /* non-JSON */ }
-  if (!res.ok) throw new ApiError(data.message || "Something went wrong. Please try again.", res.status, data.fields);
+  if (!res.ok) throw new ApiError(data.message || "Something went wrong. Please try again.", res.status, data.fields, data);
   return data;
 }
 export const get = (p, query) => api(p, { query });
